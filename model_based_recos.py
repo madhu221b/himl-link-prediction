@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 
 from node2vec import Node2Vec
 
+from utils import set_seed, rewiring_list
 # Hyperparameter for node2vec
 DIM = 64
 WALK_LEN = 10
@@ -46,7 +47,7 @@ def generate_pos_neg_links(G,seed, prop_pos=0.5, prop_neg=0.5):
         n_edges = G.number_of_edges()
         n_nodes = G.number_of_nodes()
         npos, nneg = int(prop_pos * n_edges), int(prop_neg * n_edges)
- 
+        print("Total no of edges: {}, total no of nodes:{}".format(n_edges, n_nodes))
         non_edges = [e for e in nx.non_edges(G)]
         print("Finding %d of %d non-edges" % (nneg, len(non_edges)))
 
@@ -66,7 +67,7 @@ def generate_pos_neg_links(G,seed, prop_pos=0.5, prop_neg=0.5):
         for eii in rnd_inx:
        
             edge = edges[eii]
-            G.remove_edge(*edge)
+            # G.remove_edge(*edge)
             pos_edge_list.append(edge)
             n_count += 1
             if n_count >= npos:
@@ -76,6 +77,7 @@ def generate_pos_neg_links(G,seed, prop_pos=0.5, prop_neg=0.5):
 def edges_to_features(model, edge_list, edge_function):
         n_tot = len(edge_list)
         feature_vec = np.empty((n_tot, DIM), dtype='f')
+        feature_idx = np.empty((n_tot,2), dtype="i")
         for ii in range(n_tot):
             v1, v2 = edge_list[ii]
 
@@ -85,8 +87,8 @@ def edges_to_features(model, edge_list, edge_function):
 
             # Calculate edge feature
             feature_vec[ii] = edge_function(emb1, emb2)
-
-        return feature_vec
+            feature_idx[ii] = [v1,v2]
+        return feature_vec, feature_idx
 
 def train(graph, seed):
 
@@ -94,14 +96,33 @@ def train(graph, seed):
     n2v_model = recommender_model(graph)
 
     print("Splitting Graph into Positive and Negative Edges")
-    pos_edge_list, neg_edge_list = generate_pos_neg_links(graph, seed)
+    pos_edge_list, neg_edge_list = generate_pos_neg_links(graph.copy(), seed)
     edges, labels = get_selected_edges(pos_edge_list, neg_edge_list)
     print("Computing Edge Features")
-    feature_vec = edges_to_features(n2v_model, edges, edge_functions["hadamard"])
+    feature_vec, feature_idx = edges_to_features(n2v_model, edges, edge_functions["hadamard"])
     print("Splitting into Train Test Split")
-    X_train, X_test, y_train, y_test = train_test_split(feature_vec, labels, test_size=0.33, random_state=seed)
-    train_model(X_train, X_test, y_train, y_test)
-    
+    X_train, X_test, y_train, y_test, idx_train, idx_test = train_test_split(feature_vec, labels,feature_idx, test_size=0.33, random_state=seed)
+    clf, auc_test = train_model(X_train, X_test, y_train, y_test)
+    pred_edges = clf.predict(X_test)
+    new_edges = idx_test[np.argwhere(pred_edges==1)]
+    g_new = get_new_graph(graph.copy(), new_edges, seed)
+    return g_new, auc_test
+
+
+def  get_new_graph(g, new_edges, seed):
+    for i, new_edge in enumerate(new_edges):
+         seed += i
+         set_seed(seed)
+         u, v = new_edge[0][0], new_edge[0][1]
+         
+         if not g.has_edge(u, v):
+             edges_to_be_removed = rewiring_list(g, u, 1)
+             g.remove_edges_from(edges_to_be_removed) # deleting previously existing links
+             g.add_edge(u,v)
+
+    return g
+
+
 def train_model(X_train, X_test, y_train, y_test):
     # Linear classifier
     scaler = StandardScaler()
@@ -114,4 +135,10 @@ def train_model(X_train, X_test, y_train, y_test):
 
     # Test classifier
     auc_test = metrics._scorer.roc_auc_scorer(clf, X_test, y_test)
+
     print("auc train:", auc_train, "auc test", auc_test)
+    return clf, auc_test
+
+
+
+     

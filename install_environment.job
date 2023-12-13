@@ -21,3 +21,6 @@ pip install gensim==3.6.0
 pip install joblib
 pip install scikit-learn
 pip install node2vec
+pip install fast_pagerank
+pip install pandas
+pip install matplotlib
