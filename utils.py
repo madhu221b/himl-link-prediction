@@ -87,7 +87,7 @@ def save_csv(df, fn):
         return False
     return True
 
-def get_filename(hMM,hmm):
+def get_filename(hMM,hmm,fm=0.3):
     full_path = "./DPAH"
     return os.path.join(full_path, "{}-N{}-fm{}{}{}{}{}{}-ID0.gpickle".format(model, N, 
                                              round(fm,1), 
@@ -165,10 +165,10 @@ def get_node_metadata_as_dataframe(g, njobs=1):
                         'wtf':wtf,
                         }, columns=cols)
 
-def save_metadata(g, hMM, hmm, model,n_epoch,B=0,dim=64,seed=42):
+def save_metadata(g, hMM, hmm, model,n_epoch,fm,B=0,dim=64,seed=42):
     folder_path = "../himl-link-prediction/{}/seed_{}/B_{}/dim_{}".format(model,seed,B,dim)
     create_subfolders(folder_path)
-    filename = get_filename(hMM, hmm)
+    filename = get_filename(hMM, hmm,fm)
     
     fn = os.path.join(folder_path,'{}_n_epoch_{}.gpickle'.format(filename,n_epoch))
     save_gpickle(g, fn)

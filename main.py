@@ -4,7 +4,7 @@ from tqdm import tqdm
 import pickle as pkl
 from utils import get_filename, run_acquisition_function, set_seed, save_metadata
 from human_annotator import get_edges_from_annotator
-from generate_results import get_visibility_plot, get_centrality_plot, time_vs_betn, time_vs_visibility
+from generate_results import get_centrality_plot, time_vs_betn, time_vs_visibility
 from dist_based_recos import train
 MAIN_SEED = 42
 
@@ -30,13 +30,13 @@ def make_one_timestep_no_human(g, seed):
     g_new = train(g, seed)
     return g_new
 
-def run(hMM, hmm,dim,T,B,seed):
+def run(hMM, hmm,dim,T,fm,B,seed):
     acc_dict = {}
     set_seed(seed)
     
     # Step 1: Read Initial Graph
     print("!! [Step 1] Get Graph of hMM={}, hmm={} !!".format(hMM,hmm))
-    g = nx.read_gpickle(get_filename(hMM,hmm))
+    g = nx.read_gpickle(get_filename(hMM,hmm,fm))
     node2group = {node:g.nodes[node]["m"] for node in g.nodes()}
     nx.set_node_attributes(g, node2group, 'group')
 
@@ -46,18 +46,18 @@ def run(hMM, hmm,dim,T,B,seed):
     for time in iterable:
         # seed = MAIN_SEED+time+1 
         seed = seed+time+1
-        save_metadata(g,hMM,hmm,"_human",time,B,dim,seed_orig)
+        save_metadata(g,hMM,hmm,"_human",time,fm,B,dim,seed_orig)
         g_test = make_one_timestep(g.copy(), dim, seed,B)
         g = g_test
  
  
-def run_no_human(hMM, hmm,T,seed):
+def run_no_human(hMM, hmm,T,fm,seed):
     set_seed(seed)
     acc_dict = {}
     
     # Step 1: Read Initial Graph
     print("!! [Step 1] Get Graph of hMM={}, hmm={} !!".format(hMM,hmm))
-    g = nx.read_gpickle(get_filename(hMM,hmm))
+    g = nx.read_gpickle(get_filename(hMM,hmm,fm))
 
 
     iterable = tqdm(range(T), desc='Timesteps', leave=True) 
@@ -66,7 +66,7 @@ def run_no_human(hMM, hmm,T,seed):
     for time in iterable:
         seed = seed+time+1 
 
-        save_metadata(g,hMM,hmm,"_no_human",time,seed=seed_orig)
+        save_metadata(g,hMM,hmm,"_no_human",time,fm,seed=seed_orig)
         g_updated = make_one_timestep_no_human(g.copy(), seed)
         g = g_updated
 
@@ -76,6 +76,7 @@ if __name__ == "__main__":
     parser.add_argument("--hMM", help="homophily between Majorities", type=float, default=0.5)
     parser.add_argument("--hmm", help="homophily between minorities", type=float, default=0.5)
     parser.add_argument("--T", help="Timesteps to continue the loop", type=int, default=10)
+    parser.add_argument("--fm", help="Minority Fraction", type=float, default=0.3)
     parser.add_argument("--B", help="Active Learning Batch Size", type=int, default=75)
     parser.add_argument("--dim", help="Dimensionality of N2V", type=int, default=64)
     parser.add_argument("--seed", help="Seed", type=int, default=42)
@@ -90,11 +91,11 @@ if __name__ == "__main__":
         # get_centrality_plot(args.hmm, args.hMM, args.B, args.no_human)
     else:
         if not args.no_human:
+            print("Running for hMM:{}, hmm:{}".format(args.hMM,args.hmm))
             for seed in [42,420,4200]:
-                for B in [50,100,200]:
-                   run(args.hMM, args.hmm, args.dim, args.T,B,seed)
+                   run(args.hMM, args.hmm, args.dim, args.T,args.fm,75,seed)
         else:
             for seed in [42,420,4200]:
                 # run_no_human(args.hMM, args.hmm, args.T,args.seed)
                 print("Running for seed: ", seed)
-                run_no_human(args.hMM, args.hmm, args.T,seed)
+                run_no_human(args.hMM, args.hmm, args.T,args.fm,seed)
