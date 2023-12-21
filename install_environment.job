@@ -24,3 +24,4 @@ pip install node2vec
 pip install fast_pagerank
 pip install pandas
 pip install matplotlib
+pip install -U git+https://github.com/taynaud/python-louvain.git@networkx2

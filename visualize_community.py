@@ -1,3 +1,4 @@
+import argparse
 import matplotlib
 matplotlib.use('Agg')
 import numpy as np
@@ -5,157 +6,68 @@ import matplotlib.pyplot as plt
 import random
 import networkx as nx
 from matplotlib.patches import Circle
-
+from community import community_louvain
 random.seed(123)
 np.random.seed(123)
-
-g_path = "/home/mpawar/himl-link-prediction/_human/B_75/dim_64/DPAH/DPAH-N1000-fm0.3-d0.03-ploM2.5-plom2.5-hMM0.8-hmm0.2-ID0.gpickle_n_epoch_9.gpickle"
-
-# colors = iter([plt.cm.tab20(i) for i in range(50)])
-cmap = {name:plt.get_cmap(name) for name in ('Pastel1','Pastel2')}
-N = 30
-colors = np.concatenate([cmap[name](np.linspace(0, 1, N)) 
-                         for name in ('Pastel2','Pastel1')])  
-                         
-color_dict = {'min':'#ec8b67', 'maj':'#6aa8cb'}
-def community_layout(g, partition):
-    """
-    Compute the layout for a modular graph.
+"""
+ # to install networkx 2.0 compatible version of python-louvain use:
+ # pip install -U git+https://github.com/taynaud/python-louvain.git@networkx2
+"""
+# g_path = "/home/mpawar/himl-link-prediction/_human/seed_42/B_75/dim_64/DPAH/DPAH-N1000-fm0.3-d0.03-ploM2.5-plom2.5-hMM0.2-hmm0.8-ID0.gpickle_n_epoch_9.gpickle"
+# g_path = "/home/mpawar/himl-link-prediction/_no_human/seed_42/B_0/dim_64/DPAH/DPAH-N1000-fm0.3-d0.03-ploM2.5-plom2.5-hMM0.2-hmm0.8-ID0.gpickle_n_epoch_9.gpickle"
 
 
-    Arguments:
-    ----------
-    g -- networkx.Graph or networkx.DiGraph instance
-        graph to plot
-
-    partition -- dict mapping int node -> int community
-        graph partitions
-
-
-    Returns:
-    --------
-    pos -- dict mapping int node -> (float x, float y)
-        node positions
-
-    """
-
-   
-
-    pos_nodes = _position_nodes(g, partition, scale=1.)
-    pos_communities, circle_dict = _position_communities(g, partition, pos_nodes, scale=3.)
-    # combine positions
-    print("no of comms", len(circle_dict))
-    pos = dict()
-    for node in g.nodes():
-        pos[node] = pos_communities[node] + pos_nodes[node]
-
-    return pos, circle_dict
-
-def _position_communities(g, partition,pos_nodes, **kwargs):
-
-    # create a weighted graph, in which each node corresponds to a community,
-    # and each edge weight to the number of edges between communities
-    circle_dict = dict()
-    between_community_edges = _find_between_community_edges(g, partition)
-
-    communities = set(partition.values())
-    hypergraph = nx.DiGraph()
-    hypergraph.add_nodes_from(communities)
-    for (ci, cj), edges in between_community_edges.items():
-        hypergraph.add_edge(ci, cj, weight=len(edges))
-
-    # find layout for communities
-    pos_communities = nx.spring_layout(hypergraph, **kwargs)
-
-    for community_no, coords in pos_communities.items():
-        if community_no not in circle_dict:
-            circle_dict[community_no] = dict()
-        circle_dict[community_no]["coords"] = coords
-        circle_dict[community_no]["r"] = 0
-
-    # set node positions to position of community
-    pos = dict()
-    
-   
+def get_hoG(partition,g):
+    comm_dict = {} # community_no: {"no of minority nodes:"{}, "total no of nodes:"}
     for node, community in partition.items():
-        pos[node] = pos_communities[community]
-        actual_node_pos = pos[node]
-        total_node_pos = actual_node_pos + pos_communities[community]
-        r = np.sqrt((pos_nodes[node][0])**2 + \
-           (pos_nodes[node][1])**2)
-        if r > circle_dict[community]["r"]:
-            circle_dict[community]["r"] = r
+        c = g.nodes[node]["m"]
+        if community not in comm_dict:
+            comm_dict[community] = {"m":0, "t":0}
 
+        comm_dict[community]["t"] += 1
+        if c == 1:
+            comm_dict[community]["m"] += 1
 
-    return pos, circle_dict
+    avg_dict = {no:np.round((val_dict["m"]/val_dict["t"])*100.0,2) for no, val_dict in comm_dict.items()}
+    return avg_dict.values()
 
-def _find_between_community_edges(g, partition):
-
-    edges = dict()
-
-    for (ni, nj) in g.edges():
-        ci = partition[ni]
-        cj = partition[nj]
-
-        if ci != cj:
-            try:
-                edges[(ci, cj)] += [(ni, nj)]
-            except KeyError:
-                edges[(ci, cj)] = [(ni, nj)]
-
-    return edges
-
-def _position_nodes(g, partition, **kwargs):
-    """
-    Positions nodes within communities.
-    """
-
-    communities = dict()
-    for node, community in partition.items():
-        try:
-            communities[community] += [node]
-        except KeyError:
-            communities[community] = [node]
-
-    pos = dict()
-    for ci, nodes in communities.items():
-        subgraph = g.subgraph(nodes)
-        pos_subgraph = nx.spring_layout(subgraph, **kwargs)
-        pos.update(pos_subgraph)
-
-    return pos
-
-def test():
-    # to install networkx 2.0 compatible version of python-louvain use:
-    # pip install -U git+https://github.com/taynaud/python-louvain.git@networkx2
-    from community import community_louvain
-    patches = [] 
-  
-  
-    circle = Circle((-0.18039811, -0.17300569), 2,alpha=0.2) 
-
-    # g = nx.karate_club_graph()
-    g = nx.read_gpickle(g_path)
-   
-    partition = community_louvain.best_partition(g.to_undirected(),resolution=1.2)
- 
-    pos, circle_dict = community_layout(g, partition)
-
-  
+def visualize_hoG(avg_vals,fm,hmm,hMM,t,no_human):
+    num_bins = 10
     fig, ax = plt.subplots() 
-    node_color = [color_dict['min'] if obj['m'] else color_dict['maj'] for n,obj in g.nodes(data=True)]
-    # nx.draw_networkx_edges(g,pos,alpha=0.2)
-    
-    # nx.draw(g, pos,node_color=node_color)
-    nx.draw_networkx_nodes(g,pos,node_color=node_color,edgecolors="black",linewidths=0.2)
-    
-    for community_no, value in circle_dict.items():
-        # [next(colors)][0
-        circle = Circle(value["coords"],value["r"],color=colors[community_no],alpha=0.5,linewidth=2)
-        ax.add_patch(circle)
-    # ax.add_patch(circle)
-  
-    plt.savefig('plotgraph.png', dpi=300, bbox_inches='tight')
+    if no_human: 
+        model = "no_human"
+        color = "#DD654B"
+    else:
+        model = "human"
+        color = "#81B622"
+    n, bins, patches = ax.hist(avg_vals, num_bins, 
+                           density = 1,  
+                           color =color,  
+                           alpha = 0.7) 
+    ax.set_ylim(0,0.2)
+    file_name = "plots/hoG_{}_fm{}_hMM{}_hmm{}_nepoch{}.png".format(model,fm,hMM,hmm,t)
+    plt.savefig(file_name, dpi=300, bbox_inches='tight')
+
+def run(fm,hmm,hMM,no_human):
+
+    T = [0,3,6,9]
+    for t in T:
+        if no_human:
+          g_path = "../himl-link-prediction/_no_human/seed_42/B_0/dim_64/DPAH/DPAH-N1000-fm{}-d0.03-ploM2.5-plom2.5-hMM{}-hmm{}-ID0.gpickle_n_epoch_{}.gpickle".format(fm,hMM,hmm,t)
+        else:
+          g_path = "../himl-link-prediction/_human/seed_42/B_75/dim_64/DPAH/DPAH-N1000-fm{}-d0.03-ploM2.5-plom2.5-hMM{}-hmm{}-ID0.gpickle_n_epoch_{}.gpickle".format(fm,hMM,hmm,t)
+
+        g = nx.read_gpickle(g_path)
+        partition = community_louvain.best_partition(g.to_undirected(),resolution=1.2)
+        avg_vals = get_hoG(partition,g)
+        visualize_hoG(avg_vals,fm,hmm,hMM,t,no_human)
 
 if __name__ == "__main__":
-    test()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--hMM", help="homophily between Majorities", type=float, default=0.5)
+    parser.add_argument("--hmm", help="homophily between minorities", type=float, default=0.5)
+    parser.add_argument("--fm", help="Minority Fraction", type=float, default=0.3)
+    parser.add_argument("--no_human", default=False, action="store_true", help="Generate results without human intervention")
+    args = parser.parse_args()
+    run(args.fm,args.hmm,args.hMM,args.no_human)
+   

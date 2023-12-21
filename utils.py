@@ -108,6 +108,7 @@ def get_fraction_in_topk(file_name,topk=10):
 
         df.sort_values(by='pagerank', ascending=False, inplace=True)
         topnodes = df[0:t] # first top-k ranks (list)
+      
         fm_hat = topnodes.minority.sum()/topnodes.shape[0]
         return fm_hat
 

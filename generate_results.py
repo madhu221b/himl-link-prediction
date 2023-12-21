@@ -1,26 +1,34 @@
 import os
+import argparse
 import numpy as np
 import pickle as pkl
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from collections import Counter
 from utils import get_fraction_in_topk, get_centrality
 
 seeds = [42,420,4200]
 
-def get_visibility_dict(folder_path, hMM,hmm):
+
+def get_visibility_dict(folder_path, hMM,hmm,fm):
     visibility_dict = {}
     all_files = os.listdir(folder_path)
     csv_files = [os.path.join(folder_path,file_name) for file_name in all_files if "netmeta" not in file_name and ".csv" in file_name]
     for file_name in csv_files:
         hMM_ext, hmm_ext = file_name.split("hMM")[-1].split("-")[0], file_name.split("hmm")[-1].split("-")[0]
         hMM_ext, hmm_ext = float(hMM_ext.replace(".csv","")), float(hmm_ext.replace(".csv",""))
-        if hmm_ext == hmm and hMM_ext == hMM:
+        fm_ext = float(file_name.split("fm")[-1].split("-")[0])
+        if hmm_ext == hmm and hMM_ext == hMM and fm_ext==fm:
             T =  int(file_name.split("n_epoch_")[-1].replace(".csv",""))
+            print("File name for reading csv:", file_name)
             fm_hat = get_fraction_in_topk(file_name)
             visibility_dict[T] = fm_hat
-   
+    
+    print("visibility dict::", visibility_dict)
     visibility_dict = {key:val-visibility_dict[0] for key,val in visibility_dict.items()}
     visibility_dict = dict(sorted(visibility_dict.items()))
+   
     return visibility_dict
             
 def get_centrality_plot(hmm, hMM,B, no_human=False,centrality="betweenness"):
@@ -77,18 +85,18 @@ def time_vs_betn(hMM,hmm):
     plt.close(fig)    # close the figure window
 
 
-def get_whole_cent_dict(main_path,hMM,hmm):
+def get_whole_cent_dict(main_path,hMM,hmm,fm):
     print(main_path)
-    dict_file = main_path+"/centrality_hMM{}_hmm{}.pkl".format(hMM,hmm)
+    dict_file = main_path+"/centrality_fm{}_hMM{}_hmm{}.pkl".format(fm,hMM,hmm)
     cent_dict = {}
     if not os.path.exists(dict_file):
             for file_name in os.listdir(main_path):
               if ".gpickle" not in file_name or "csv" in file_name: continue 
               hMM_ext, hmm_ext = file_name.split("hMM")[-1].split("-")[0], file_name.split("hmm")[-1].split("-")[0]
               hMM_ext, hmm_ext = float(hMM_ext.replace(".gpickle","")), float(hmm_ext.replace(".gpickle",""))
-          
-              print("dict file", dict_file)
-              if hMM != hMM_ext or hmm != hmm_ext: continue
+              fm_ext = float(file_name.split("fm")[-1].split("-")[0])
+              
+              if hMM != hMM_ext or hmm != hmm_ext or fm_ext != fm: continue
 
               
               graph_path = os.path.join(main_path,file_name)
@@ -97,7 +105,8 @@ def get_whole_cent_dict(main_path,hMM,hmm):
               avg_cent = get_centrality(graph_path,centrality="betweenness")
               cent_dict[T] = np.round(avg_cent,5)
 
-            with open(dict_file, 'wb') as f:                
+            with open(dict_file, 'wb') as f:     
+                    print("Dict file created:", dict_file)           
                     pkl.dump(cent_dict,f)                 
     else:
             with open(dict_file, 'rb') as f:                
@@ -107,21 +116,67 @@ def get_whole_cent_dict(main_path,hMM,hmm):
     cent_dict = dict(sorted(cent_dict.items()))
     return cent_dict
 
+def time_vs_betn_for_fm_seeds(hMM,hmm):
+    colors = ["#81B622","#D8A7B1","#2C92EC","#38A055","#756AB6"]
+    human_path =   "../himl-link-prediction/_human/"
+    human_dict = {}
+    for i, seed in enumerate(seeds):
+        print("Using seed:", seed)
+  
+        b_dict = {}
+        for fm in [0.2,0.3,0.4,0.5,0.6]:
+            seed_path = os.path.join(human_path, "seed_"+str(seed),"B_75/dim_64/DPAH")
+            h_cent_dict = get_whole_cent_dict(seed_path,hMM,hmm,fm)
+            b_dict[fm] = h_cent_dict
+           
 
-def time_vs_betn_seeds(hMM,hmm):
+        if i == 0:
+            human_dict = {fm:{T:[val] for T, val in sub_dict.items()}  for fm,sub_dict in b_dict.items()} # {"B":{0,1,2...}}
+           
+        else: # add values
+
+           human_dict = {fm:{T:human_dict[fm][T]+[val] for T, val in sub_dict.items()}  for fm,sub_dict in b_dict.items()}
+           if i == len(seeds) -1:
+       
+              h_std =  {fm:{T:np.std(val) for T, val in sub_dict.items()}  for fm,sub_dict in human_dict.items()}
+              human_dict = {fm:{T:(np.round(np.mean(val),5)) for T, val in sub_dict.items()}  for fm,sub_dict in human_dict.items()}
+              print("h st: ", h_std)
+              print("humn :",human_dict)
+
+
+    fig, ax = plt.subplots( nrows=1, ncols=1 )  # create figure & 1 axis
+    # ax.plot(no_human_dict.keys(), no_human_dict.values(), label ='No Human', marker="o",color="#DD654B")
+  
+
+    idxs = list(human_dict[0.3].keys())
+
+    
+    for i, (fm, sub_dict) in enumerate(human_dict.items()):
+       ax.errorbar(sub_dict.keys(), sub_dict.values(), label="AL, fm={}".format(fm), marker="o",color=colors[i],yerr = h_std[fm].values())
+    
+
+    ax.set_xticks(idxs)
+    ax.set_xlabel("Timesteps")
+    ax.set_ylabel("Avg Betweeness Centrality for Minority Nodes")
+    ax.legend(loc = "lower right",bbox_to_anchor=(0.9,0.5))
+    fig.savefig('plots/time_vs_betn_allfm_hMM{}_hmm{}.png'.format(hMM,hmm),bbox_inches='tight')   # save the figure to file
+    plt.close(fig)    # close the figure window
+
+
+def time_vs_betn_seeds(hMM,hmm,fm):
     colors = ["#81B622","#D8A7B1","#2C92EC","#38A055"]
     no_human_path, human_path = "../himl-link-prediction/_no_human/",  "../himl-link-prediction/_human/"
     no_human_dict, human_dict = {}, {}
     for i, seed in enumerate(seeds):
-       
+        print("Using seed:", seed)
         seed_path = os.path.join(no_human_path, "seed_"+str(seed),"B_0/dim_64/DPAH")
-        cent_dict = get_whole_cent_dict(seed_path,hMM,hmm)
+        cent_dict = get_whole_cent_dict(seed_path,hMM,hmm,fm)
         
         b_dict = {}
         # [50,75,100,200]
         for j, B in enumerate([75]):
             seed_path = os.path.join(human_path, "seed_"+str(seed),"B_{}/dim_64/DPAH".format(B))
-            h_cent_dict = get_whole_cent_dict(seed_path,hMM,hmm)
+            h_cent_dict = get_whole_cent_dict(seed_path,hMM,hmm,fm)
             b_dict[B] = h_cent_dict
            
 
@@ -136,7 +191,7 @@ def time_vs_betn_seeds(hMM,hmm):
               no_h_std = [np.std(value) for _,value in no_human_dict.items()]
               no_human_dict = {key:(np.round(np.mean(value),5)) for key,value in no_human_dict.items()}
               
-              h_std =  [np.std(val) for B,sub_dict in human_dict.items() for T, val in sub_dict.items()]
+              h_std =  {B:{T:np.std(val) for T, val in sub_dict.items()}  for B,sub_dict in human_dict.items()}
               print("no h st:", no_h_std)
               print("no humn :", no_human_dict)
          
@@ -153,7 +208,7 @@ def time_vs_betn_seeds(hMM,hmm):
 
     
     for i, (b, sub_dict) in enumerate(human_dict.items()):
-       ax.errorbar(sub_dict.keys(), sub_dict.values(), label="AL, B={}".format(b), marker="o",color=colors[i],yerr = h_std)
+       ax.errorbar(sub_dict.keys(), sub_dict.values(), label="AL, B={}".format(b), marker="o",color=colors[i],yerr = h_std[b].values())
     
 
     ax.errorbar(no_human_dict.keys(), no_human_dict.values(), label ='No Human', marker="o",color="#DD654B", yerr = no_h_std)
@@ -161,23 +216,23 @@ def time_vs_betn_seeds(hMM,hmm):
     ax.set_xlabel("Timesteps")
     ax.set_ylabel("Avg Betweeness Centrality for Minority Nodes")
     ax.legend(loc = "lower right",bbox_to_anchor=(0.4,0))
-    fig.savefig('plots/time_vs_betn_hMM{}_hmm{}.png'.format(hMM,hmm),bbox_inches='tight')   # save the figure to file
+    fig.savefig('plots/time_vs_betn_fm{}_hMM{}_hmm{}.png'.format(fm,hMM,hmm),bbox_inches='tight')   # save the figure to file
     plt.close(fig)    # close the figure window
 
-def time_vs_visibility_seeds(hMM,hmm):
+def time_vs_visibility_seeds(hMM,hmm,fm):
     colors = ["#81B622","#D8A7B1","#2C92EC","#38A055"]
     no_human_path, human_path = "../himl-link-prediction/_no_human/",  "../himl-link-prediction/_human/"
     no_human_dict, human_dict = {}, {}
     for i, seed in enumerate(seeds):
-       
+        print("Running for seed:", seed)
         seed_path = os.path.join(no_human_path, "seed_"+str(seed),"B_0/dim_64/DPAH")
-        vis_dict = get_visibility_dict(seed_path,hMM,hmm)
+        vis_dict = get_visibility_dict(seed_path,hMM,hmm,fm)
         
         b_dict = {}
         # [50,75,100,200]
         for j, B in enumerate([75]):
             seed_path = os.path.join(human_path, "seed_"+str(seed),"B_{}/dim_64/DPAH".format(B))
-            vis_dict_2 = get_visibility_dict(seed_path,hMM,hmm)
+            vis_dict_2 = get_visibility_dict(seed_path,hMM,hmm,fm)
             b_dict[B] = vis_dict_2
            
 
@@ -189,16 +244,18 @@ def time_vs_visibility_seeds(hMM,hmm):
            no_human_dict = {key:no_human_dict[key]+[value] for key,value in vis_dict.items()}
            human_dict = {B:{T:human_dict[B][T]+[val] for T, val in sub_dict.items()}  for B,sub_dict in b_dict.items()}
            if i == len(seeds) -1:
+              print("no humn :", no_human_dict)
               no_h_std = [np.std(value) for _,value in no_human_dict.items()]
               no_human_dict = {key:(np.round(np.mean(value),5)) for key,value in no_human_dict.items()}
               
-              h_std =  [np.std(val) for B,sub_dict in human_dict.items() for T, val in sub_dict.items()]
+              h_std = {B:{T:np.std(val) for T, val in sub_dict.items()}  for B,sub_dict in human_dict.items()}
               print("no h st:", no_h_std)
-              print("no humn :", no_human_dict)
+              
          
-              human_dict = {B:{T:(np.round(np.mean(val),5)) for T, val in sub_dict.items()}  for B,sub_dict in human_dict.items()}
               print("h st: ", h_std)
               print("humn :",human_dict)
+              human_dict = {B:{T:(np.round(np.mean(val),5)) for T, val in sub_dict.items()}  for B,sub_dict in human_dict.items()}
+             
 
 
     fig, ax = plt.subplots( nrows=1, ncols=1 )  # create figure & 1 axis
@@ -209,7 +266,7 @@ def time_vs_visibility_seeds(hMM,hmm):
 
     
     for i, (b, sub_dict) in enumerate(human_dict.items()):
-       ax.errorbar(sub_dict.keys(), sub_dict.values(), label="AL, B={}".format(b), marker="o",color=colors[i],yerr = h_std)
+       ax.errorbar(sub_dict.keys(), sub_dict.values(), label="AL, B={}".format(b), marker="o",color=colors[i],yerr = h_std[b].values())
     
 
     ax.errorbar(no_human_dict.keys(), no_human_dict.values(), label ='No Human', marker="o",color="#DD654B", yerr = no_h_std)
@@ -217,77 +274,21 @@ def time_vs_visibility_seeds(hMM,hmm):
     ax.set_xlabel("Timesteps")
     ax.set_ylabel("Visibility of Minority Nodes in Top-10")
     ax.legend(loc = "lower right",bbox_to_anchor=(0.8,0))
-    fig.savefig('plots/time_vs_visibility_hMM_{}_hmm_{}.png'.format(hMM,hmm),bbox_inches='tight') 
+    fig.savefig('plots/time_vs_visibility_fm{}_hMM_{}_hmm_{}.png'.format(fm,hMM,hmm),bbox_inches='tight') 
     plt.close(fig)    # close the figure window
 
 
-def time_vs_visibility(hMM,hmm):
-    colors = ["#E9EC2C","#2C92EC","#38A055"]         
-    visibility_dict = get_visibility_plot(hmm, hMM, no_human=True)
-    visibility_dict = dict(sorted(visibility_dict.items()))
 
-    fig, ax = plt.subplots( nrows=1, ncols=1 )  # create figure & 1 axis
-    ax.plot(visibility_dict.keys(), visibility_dict.values(), label ='No Human',color="#DD654B")
-    idxs = list(visibility_dict.keys())
-
-
-    for i, B in enumerate([75]):          
-        visibility_dict = get_visibility_plot(hmm, hMM, B=B)
-        visibility_dict = dict(sorted(visibility_dict.items()))
-        ax.plot(visibility_dict.keys(), visibility_dict.values(),color=colors[i],label="AL, B={}".format(B))
-    ax.set_xticks(idxs)
-    ax.set_xlabel("Timesteps")
-    ax.set_ylabel("Change in Visibility of Minority Nodes in Top-10")
-    ax.legend(loc = "lower right",bbox_to_anchor=(0.8,0))
-    fig.savefig('plots/time_vs_visibility_hMM_{}_hmm_{}.png'.format(hMM,hmm),bbox_inches='tight')   # save the figure to file
-    plt.close(fig)    # close the figure window
-
-
-def time_vs_betn_dims():
-    path = "../himl-link-prediction/_human/B_75"
-    fig, ax = plt.subplots( nrows=1, ncols=1 )  # create figure & 1 axis
-    colors = ["#DD654B","#E9EC2C","#2C92EC","#38A055"] 
-
-    for i, dim in enumerate(os.listdir(path)):
-        if not "dim" in dim: continue
-        print("Dimensionality: ", dim)
-        sub_path = os.path.join(path,dim,"DPAH")
-        cent_dict, dict_file = {}, sub_path+"/centrality.pkl".format(dim)
-        if not os.path.exists(dict_file):
-            for file_name in os.listdir(sub_path):
-              if ".gpickle" not in file_name or "csv" in file_name: continue 
-              graph_path = os.path.join(sub_path,file_name)
-             
-            
-              T =  int(graph_path.split("n_epoch_")[-1].replace(".gpickle",""))
-              avg_cent = get_centrality(graph_path,centrality="betweenness")
-              cent_dict[T] = np.round(avg_cent,5)
-
-            with open(dict_file, 'wb') as f:                
-                    pkl.dump(cent_dict,f)                 
-        else:
-            with open(dict_file, 'rb') as f:                
-               cent_dict = pkl.load(f)
-               idxs = list(cent_dict.keys())
-               cent_dict = dict(sorted(cent_dict.items()))
-               print("Centrality Dict computed for dim:{}, {}".format(dim,cent_dict))
-               dim = dim.split("dim_")[-1]
-               ax.plot(cent_dict.keys(), cent_dict.values(),marker="o",color=colors[i-1],label="dim={}".format(dim))
-
-                
-
-    
-    ax.set_xticks(idxs)
-    ax.set_xlabel("Timesteps")
-    ax.set_ylabel("Avg Betweeness Centrality for Minority Nodes")
-    ax.legend(loc = "lower right",bbox_to_anchor=(0.4,0))
-    fig.savefig('plots/time_vs_cent_b=75_dims.png',bbox_inches='tight')   # save the figure to file
-    plt.close(fig)    # close the figure window
 
 
 
 if __name__ == "__main__":
-    # time_vs_betn_dims()
-    hMM, hmm = 0.5, 0.5
-    time_vs_visibility_seeds(hMM,hmm)
-    # time_vs_betn_seeds(hMM,hmm)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--hMM", help="homophily between Majorities", type=float, default=0.5)
+    parser.add_argument("--hmm", help="homophily between minorities", type=float, default=0.5)
+    parser.add_argument("--fm", help="Minority Fraction", type=float, default=0.3)
+
+    args = parser.parse_args()
+    # time_vs_visibility_seeds(args.hMM,args.hmm,args.fm)
+    # time_vs_betn_seeds(args.hMM,args.hmm,args.fm)
+    time_vs_betn_for_fm_seeds(args.hMM,args.hmm)
