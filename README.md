@@ -6,6 +6,9 @@ sbatch install_environment.job
 ```
 Find all the generated graphs - with and without active learning here
 
+```--no_human``` flag can be added to run an active learning loop and visualization of the community.
+
+
 Command to run active learning loop:
 ```bash
 sbatch run_job.job
@@ -13,10 +16,10 @@ sbatch run_job.job
 
 Command to generate results:
 ```bash
-python3 generate_results.py --fm << >> --hMM << >> --hmm << >>
+python3 generate_results.py --fm ____  --hMM ____  --hmm ____ 
 ```
 
 Command to generate plot for visualization of dispersion of minorities in the community:
 ```bash
-python3 visualize_community.py --fm << >> --hMM << >> --hmm << >>
+python3 visualize_community.py --fm ____ --hMM ____ --hmm ____
 ```
