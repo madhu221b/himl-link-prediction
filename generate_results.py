@@ -158,7 +158,7 @@ def time_vs_betn_for_fm_seeds(hMM,hmm):
     ax.set_xticks(idxs)
     ax.set_xlabel("Timesteps")
     ax.set_ylabel("Avg Betweeness Centrality for Minority Nodes")
-    ax.legend(loc = "lower right",bbox_to_anchor=(0.9,0.5))
+    ax.legend(loc = "lower right",bbox_to_anchor=(1,0.0))
     fig.savefig('plots/time_vs_betn_allfm_hMM{}_hmm{}.png'.format(hMM,hmm),bbox_inches='tight')   # save the figure to file
     plt.close(fig)    # close the figure window
 
@@ -215,7 +215,7 @@ def time_vs_betn_seeds(hMM,hmm,fm):
     ax.set_xticks(idxs)
     ax.set_xlabel("Timesteps")
     ax.set_ylabel("Avg Betweeness Centrality for Minority Nodes")
-    ax.legend(loc = "lower right",bbox_to_anchor=(0.4,0))
+    ax.legend(loc = "lower right",bbox_to_anchor=(0.1,0.6))
     fig.savefig('plots/time_vs_betn_fm{}_hMM{}_hmm{}.png'.format(fm,hMM,hmm),bbox_inches='tight')   # save the figure to file
     plt.close(fig)    # close the figure window
 
